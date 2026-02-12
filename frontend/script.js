@@ -1,7 +1,66 @@
 // Config
 const API_BASE = 'http://localhost:3000';
+const STORAGE_KEYS = {
+  symbols: 'lmt_subscribed_symbols',
+  custom: 'lmt_custom_symbols',
+  insights: 'lmt_insights',
+  prices: 'lmt_prices',
+};
+const INSIGHT_EXPIRY_MS = 24 * 60 * 60 * 1000;
 
-// State 
+// --- localStorage helpers ---
+function saveToStorage(key, data) {
+  sessionStorage.setItem(key, JSON.stringify(data));
+}
+
+function loadFromStorage(key) {
+  try {
+    const data = sessionStorage.getItem(key);
+    return data ? JSON.parse(data) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveSubscriptions() {
+  saveToStorage(STORAGE_KEYS.symbols, Array.from(subscribedSymbols));
+  saveToStorage(STORAGE_KEYS.custom, Array.from(customSymbols));
+}
+
+function savePrices() {
+  saveToStorage(STORAGE_KEYS.prices, priceData);
+}
+
+function loadSavedPrices() {
+  const saved = loadFromStorage(STORAGE_KEYS.prices);
+  if (!saved) return;
+  Object.assign(priceData, saved);
+}
+
+function saveInsights() {
+  saveToStorage(STORAGE_KEYS.insights, insights);
+}
+
+function loadSavedInsights() {
+  const saved = loadFromStorage(STORAGE_KEYS.insights);
+  if (!saved) return;
+
+  const now = Date.now();
+  // Only keep insights less than 24 hours old
+  saved.forEach((ins) => {
+    const age = now - new Date(ins.timestamp).getTime();
+    if (age < INSIGHT_EXPIRY_MS) {
+      insights.push(ins);
+    }
+  });
+
+  // Clean up expired from storage
+  if (insights.length !== saved.length) {
+    saveInsights();
+  }
+}
+
+// State
 const subscribedSymbols = new Set();
 const priceData = {};
 const insights = [];
@@ -25,6 +84,12 @@ socket.on('connect', () => {
   statusEl.textContent = 'Connected';
   statusEl.className = 'status-connected';
   addLog('Connected to server', 'info');
+
+  // Re-subscribe saved symbols on connect/reconnect
+  if (subscribedSymbols.size > 0) {
+    socket.emit('subscribe', { symbols: Array.from(subscribedSymbols) });
+    subscribedSymbols.forEach((sym) => fetchInitialQuote(sym));
+  }
 });
 
 socket.on('disconnect', () => {
@@ -56,6 +121,7 @@ socket.on('priceUpdate', (data) => {
     prevPrice: prev ? prev.price : data.price,
     fromLive: true,
   };
+  savePrices();
   renderPrices();
 });
 
@@ -71,6 +137,7 @@ socket.on('newsInsight', (data) => {
   analyzingSymbols.delete(data.symbol);
   insights.unshift(data);
   if (insights.length > 20) insights.pop();
+  saveInsights();
   renderInsights();
   addLog(`AI Insight received for ${data.symbol}: ${data.sentiment}`, 'insight');
 });
@@ -127,13 +194,21 @@ function toggleSymbol(symbol) {
     subscribedSymbols.delete(upper);
     socket.emit('unsubscribe', { symbols: [upper] });
     delete priceData[upper];
+    savePrices();
+    // Remove insights for unsubscribed symbol
+    for (let i = insights.length - 1; i >= 0; i--) {
+      if (insights[i].symbol === upper) insights.splice(i, 1);
+    }
+    saveInsights();
     renderPrices();
+    renderInsights();
   } else {
     ensureSymbolButton(upper);
     subscribedSymbols.add(upper);
     socket.emit('subscribe', { symbols: [upper] });
     fetchInitialQuote(upper);
   }
+  saveSubscriptions();
   updateButtons();
 }
 
@@ -150,6 +225,7 @@ async function fetchInitialQuote(symbol) {
         prevPrice: quote.previousClose,
         fromLive: false,
       };
+      savePrices();
       renderPrices();
     }
   } catch (err) {
@@ -314,5 +390,34 @@ function renderInsights() {
 
   insightsBody.innerHTML = analyzingHTML + insightsHTML;
 }
-// Init
-loadDefaultSymbols();
+
+function restoreState() {
+  // Restore saved insights
+  loadSavedInsights();
+  if (insights.length > 0) renderInsights();
+
+  // Restore saved prices
+  loadSavedPrices();
+  if (Object.keys(priceData).length > 0) renderPrices();
+
+  // Restore saved subscriptions
+  const savedSymbols = loadFromStorage(STORAGE_KEYS.symbols) || [];
+  const savedCustom = loadFromStorage(STORAGE_KEYS.custom) || [];
+
+  // Add custom symbols to Set (buttons will be created after defaults load)
+  savedCustom.forEach((s) => customSymbols.add(s));
+  savedSymbols.forEach((s) => subscribedSymbols.add(s));
+}
+
+async function init() {
+  restoreState();
+  await loadDefaultSymbols();
+
+  // Create buttons for custom symbols that aren't in defaults
+  customSymbols.forEach((sym) => ensureSymbolButton(sym));
+
+  // Mark saved subscriptions as active
+  updateButtons();
+}
+
+init();
