@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Live Market Tracker</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+
+  <header>
+    <h1>Live Market Tracker</h1>
+    <span id="connection-status" class="status-disconnected">Disconnected</span>
+  </header>
+
+  <div class="container">
+
+    <!-- Subscribe Section -->
+    <div class="panel subscribe-section">
+      <div class="panel-header">Subscribe to Assets</div>
+      <div class="panel-body">
+        <div class="symbol-controls">
+          <div id="symbol-buttons"></div>
+          <span style="color:#546e7a; margin: 0 4px;">|</span>
+          <div class="search-wrapper">
+            <input type="text" id="custom-symbol" class="custom-input" placeholder="Search stocks..." />
+            <div id="search-dropdown" class="search-dropdown"></div>
+          </div>
+          <button class="add-btn" id="add-custom">Add</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Prices Panel -->
+    <div class="panel">
+      <div class="panel-header">Live Prices</div>
+      <div class="panel-body">
+        <table class="price-table">
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th>Price</th>
+              <th>Volume</th>
+              <th>Updated</th>
+            </tr>
+          </thead>
+          <tbody id="price-body">
+            <tr><td colspan="4" class="no-data">Subscribe to an asset to see live prices</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- AI Insights Panel -->
+    <div class="panel">
+      <div class="panel-header">AI News Insights</div>
+      <div class="panel-body" id="insights-body">
+        <div class="no-data">AI insights will appear here when news is analyzed</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
